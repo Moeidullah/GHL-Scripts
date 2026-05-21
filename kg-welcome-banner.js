@@ -1,7 +1,6 @@
 (function () {
   'use strict';
 
-  /* Resets on every page load — banner shows fresh on every refresh */
   var dismissed = false;
 
   function getGreeting() {
@@ -11,32 +10,30 @@
     return 'Good evening';
   }
 
-  function getUserName() {
-    /* Method 1 — .user-info-card (confirmed from GHL DOM)
-       Text pattern: "RARoohan Adeelroohansheikh16@gmail.com"
-       Strip 2-char initials prefix + email suffix */
+  function getUserName(callback) {
+    /* Primary — GHL's own getUserInfo() global (confirmed working) */
+    if (typeof window.getUserInfo === 'function') {
+      window.getUserInfo()
+        .then(function (u) {
+          var name = (u && (u.firstName || (u.name && u.name.split(' ')[0]))) || null;
+          callback(name);
+        })
+        .catch(function () { callback(null); });
+      return;
+    }
+
+    /* Fallback 1 — .user-info-card DOM */
     try {
       var card = document.querySelector('.user-info-card');
       if (card) {
         var text = card.textContent.trim();
-        /* Remove email address */
         text = text.replace(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, '').trim();
-        /* Remove leading 2-char initials (e.g. "RA") */
         text = text.replace(/^[A-Z]{2}/, '').trim();
-        if (text) return text.split(' ')[0];
+        if (text) { callback(text.split(' ')[0]); return; }
       }
     } catch (e) {}
 
-    /* Method 2 — hl_header--avatar aria-label */
-    try {
-      var btn = document.querySelector('.hl_header--avatar');
-      if (btn) {
-        var label = btn.getAttribute('aria-label') || btn.title || '';
-        if (label && label !== 'Open Profile Menu') return label.split(' ')[0];
-      }
-    } catch (e) {}
-
-    /* Method 3 — localStorage user object */
+    /* Fallback 2 — localStorage */
     var lsKeys = ['user', 'userData', 'currentUser', 'ghl_user'];
     for (var k = 0; k < lsKeys.length; k++) {
       try {
@@ -44,12 +41,12 @@
         if (raw) {
           var obj = JSON.parse(raw);
           var n = obj.firstName || obj.first_name || (obj.name && obj.name.split(' ')[0]);
-          if (n) return n;
+          if (n) { callback(n); return; }
         }
       } catch (e) {}
     }
 
-    /* Method 4 — GHL Vue store */
+    /* Fallback 3 — Vue store */
     try {
       var appEl = document.querySelector('#app');
       if (appEl && appEl.__vue_app__) {
@@ -59,12 +56,12 @@
           var name =
             (s.user && (s.user.firstName || s.user.name)) ||
             (s.auth && s.auth.user && (s.auth.user.firstName || s.auth.user.name));
-          if (name) return name.split(' ')[0];
+          if (name) { callback(name.split(' ')[0]); return; }
         }
       }
     } catch (e) {}
 
-    return null;
+    callback(null);
   }
 
   function isDashboard() {
@@ -167,23 +164,26 @@
     if (dismissed) return;
     if (!isDashboard()) return;
 
-    var name   = getUserName();
-    var banner = buildBanner(name);
+    getUserName(function (name) {
+      if (!isDashboard() || dismissed) return;
 
-    var targets = [
-      document.getElementById('dashboard-wrapper'),
-      document.querySelector('[id*="dashboard-wrapper"]'),
-      document.querySelector('.hl_dashboard'),
-      document.querySelector('[class*="hl-wrapper-container"]'),
-      document.querySelector('[class*="wrapper-container"]'),
-    ];
+      var banner = buildBanner(name);
 
-    for (var i = 0; i < targets.length; i++) {
-      if (targets[i]) {
-        targets[i].insertBefore(banner, targets[i].firstChild);
-        return;
+      var targets = [
+        document.getElementById('dashboard-wrapper'),
+        document.querySelector('[id*="dashboard-wrapper"]'),
+        document.querySelector('.hl_dashboard'),
+        document.querySelector('[class*="hl-wrapper-container"]'),
+        document.querySelector('[class*="wrapper-container"]'),
+      ];
+
+      for (var i = 0; i < targets.length; i++) {
+        if (targets[i]) {
+          targets[i].insertBefore(banner, targets[i].firstChild);
+          return;
+        }
       }
-    }
+    });
   }
 
   function tryInject(attempts) {
@@ -204,19 +204,13 @@
     injectBanner();
   }
 
-  /* Route change detection */
   ['pushState', 'replaceState'].forEach(function (method) {
     var orig = history[method].bind(history);
     history[method] = function () {
       orig.apply(history, arguments);
       setTimeout(function () {
-        if (isDashboard()) {
-          /* Reset dismissed when navigating back to dashboard */
-          dismissed = false;
-          tryInject();
-        } else {
-          removeBanner();
-        }
+        if (isDashboard()) { dismissed = false; tryInject(); }
+        else removeBanner();
       }, 400);
     };
   });
