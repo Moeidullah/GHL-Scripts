@@ -10,8 +10,14 @@
     return 'Good evening';
   }
 
+  function getIcon() {
+    var h = new Date().getHours();
+    if (h < 12) return 'fa-sun';
+    if (h < 17) return 'fa-cloud-sun';
+    return 'fa-moon';
+  }
+
   function getUserName(callback) {
-    /* Primary — GHL's own getUserInfo() global (confirmed working) */
     if (typeof window.getUserInfo === 'function') {
       window.getUserInfo()
         .then(function (u) {
@@ -22,7 +28,6 @@
       return;
     }
 
-    /* Fallback 1 — .user-info-card DOM */
     try {
       var card = document.querySelector('.user-info-card');
       if (card) {
@@ -33,7 +38,6 @@
       }
     } catch (e) {}
 
-    /* Fallback 2 — localStorage */
     var lsKeys = ['user', 'userData', 'currentUser', 'ghl_user'];
     for (var k = 0; k < lsKeys.length; k++) {
       try {
@@ -45,21 +49,6 @@
         }
       } catch (e) {}
     }
-
-    /* Fallback 3 — Vue store */
-    try {
-      var appEl = document.querySelector('#app');
-      if (appEl && appEl.__vue_app__) {
-        var store = appEl.__vue_app__.config.globalProperties.$store;
-        if (store && store.state) {
-          var s = store.state;
-          var name =
-            (s.user && (s.user.firstName || s.user.name)) ||
-            (s.auth && s.auth.user && (s.auth.user.firstName || s.auth.user.name));
-          if (name) { callback(name.split(' ')[0]); return; }
-        }
-      }
-    } catch (e) {}
 
     callback(null);
   }
@@ -85,51 +74,81 @@
     injectStyle();
 
     var greeting = getGreeting();
+    var icon     = getIcon();
     var headline = name ? (greeting + ', ' + name + ' \uD83D\uDC4B') : (greeting + ' \uD83D\uDC4B');
 
+    /* Outer wrapper */
     var banner = document.createElement('div');
     banner.id = 'kg-welcome-banner';
     banner.style.cssText = [
-      'background:var(--kg-primary-gradient)',
+      'background:var(--kg-primary-color,#04342C)',
       'border-radius:12px',
-      'padding:18px 22px',
-      'margin:0 0 20px',
       'display:flex',
-      'align-items:center',
-      'justify-content:space-between',
+      'overflow:hidden',
+      'min-height:60px',
+      'margin:0 0 20px',
       'font-family:Poppins,sans-serif',
       'animation:kg-banner-in .35s ease',
-      'min-height:64px',
+      'position:relative',
     ].join(';');
 
-    var left = document.createElement('div');
-    left.style.cssText = 'display:flex;flex-direction:column;gap:4px';
+    /* Left accent block */
+    var accent = document.createElement('div');
+    accent.style.cssText = [
+      'background:var(--kg-highlight-color,#1D9E75)',
+      'padding:0 20px',
+      'display:flex',
+      'align-items:center',
+      'justify-content:center',
+      'flex-shrink:0',
+      'min-width:60px',
+    ].join(';');
+
+    var ico = document.createElement('i');
+    ico.className = 'fas ' + icon;
+    ico.setAttribute('aria-hidden', 'true');
+    ico.style.cssText = 'font-size:22px;color:#ffffff';
+    accent.appendChild(ico);
+
+    /* Right text block */
+    var right = document.createElement('div');
+    right.style.cssText = [
+      'padding:14px 52px 14px 20px',
+      'display:flex',
+      'flex-direction:column',
+      'gap:4px',
+      'justify-content:center',
+    ].join(';');
 
     var h = document.createElement('p');
-    h.style.cssText = 'font-size:16px;font-weight:500;color:#ffffff;margin:0;line-height:1.3';
+    h.style.cssText = 'font-size:15px;font-weight:500;color:#ffffff;margin:0;line-height:1.3';
     h.textContent = headline;
 
     var sub = document.createElement('p');
-    sub.style.cssText = 'font-size:12px;color:var(--kg-nav-text,#9FE1CB);margin:0;opacity:0.85';
+    sub.style.cssText = 'font-size:12px;color:var(--kg-nav-text,#9FE1CB);margin:0;opacity:0.9';
     sub.textContent = 'Welcome to Keep-Generating';
 
-    left.appendChild(h);
-    left.appendChild(sub);
+    right.appendChild(h);
+    right.appendChild(sub);
 
+    /* Close button */
     var close = document.createElement('button');
     close.setAttribute('aria-label', 'Dismiss welcome banner');
     close.style.cssText = [
+      'position:absolute',
+      'top:50%',
+      'right:14px',
+      'transform:translateY(-50%)',
       'background:rgba(255,255,255,0.12)',
       'border:1px solid rgba(255,255,255,0.2)',
       'border-radius:50%',
-      'width:28px',
-      'height:28px',
+      'width:26px',
+      'height:26px',
       'cursor:pointer',
-      'color:rgba(255,255,255,0.8)',
-      'font-size:16px',
+      'color:rgba(255,255,255,0.75)',
+      'font-size:15px',
       'line-height:1',
       'padding:0',
-      'flex-shrink:0',
       'display:flex',
       'align-items:center',
       'justify-content:center',
@@ -143,7 +162,7 @@
     });
     close.addEventListener('mouseleave', function () {
       close.style.background = 'rgba(255,255,255,0.12)';
-      close.style.color = 'rgba(255,255,255,0.8)';
+      close.style.color = 'rgba(255,255,255,0.75)';
     });
 
     close.addEventListener('click', function () {
@@ -154,7 +173,8 @@
       setTimeout(function () { banner.remove(); }, 260);
     });
 
-    banner.appendChild(left);
+    banner.appendChild(accent);
+    banner.appendChild(right);
     banner.appendChild(close);
     return banner;
   }
@@ -167,8 +187,7 @@
     getUserName(function (name) {
       if (!isDashboard() || dismissed) return;
 
-      var banner = buildBanner(name);
-
+      var banner  = buildBanner(name);
       var targets = [
         document.getElementById('dashboard-wrapper'),
         document.querySelector('[id*="dashboard-wrapper"]'),
