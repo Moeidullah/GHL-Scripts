@@ -17,39 +17,27 @@
     return 'fa-moon';
   }
 
-  function getUserName(callback) {
+  function fetchName(callback, attempts) {
+    attempts = attempts || 0;
     if (typeof window.getUserInfo === 'function') {
       window.getUserInfo()
         .then(function (u) {
           var name = (u && (u.firstName || (u.name && u.name.split(' ')[0]))) || null;
-          callback(name);
+          if (name) { callback(name); return; }
+          if (attempts < 8) setTimeout(function () { fetchName(callback, attempts + 1); }, 600);
+          else callback(null);
         })
-        .catch(function () { callback(null); });
+        .catch(function () {
+          if (attempts < 8) setTimeout(function () { fetchName(callback, attempts + 1); }, 600);
+          else callback(null);
+        });
       return;
     }
-
-    try {
-      var card = document.querySelector('.user-info-card');
-      if (card) {
-        var text = card.textContent.trim();
-        text = text.replace(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, '').trim();
-        text = text.replace(/^[A-Z]{2}/, '').trim();
-        if (text) { callback(text.split(' ')[0]); return; }
-      }
-    } catch (e) {}
-
-    var lsKeys = ['user', 'userData', 'currentUser', 'ghl_user'];
-    for (var k = 0; k < lsKeys.length; k++) {
-      try {
-        var raw = localStorage.getItem(lsKeys[k]);
-        if (raw) {
-          var obj = JSON.parse(raw);
-          var n = obj.firstName || obj.first_name || (obj.name && obj.name.split(' ')[0]);
-          if (n) { callback(n); return; }
-        }
-      } catch (e) {}
+    /* getUserInfo not ready yet — retry */
+    if (attempts < 10) {
+      setTimeout(function () { fetchName(callback, attempts + 1); }, 400);
+      return;
     }
-
     callback(null);
   }
 
@@ -70,14 +58,12 @@
     document.head.appendChild(s);
   }
 
-  function buildBanner(name) {
+  function buildBanner() {
     injectStyle();
 
     var greeting = getGreeting();
     var icon     = getIcon();
-    var headline = name ? (greeting + ', ' + name + ' \uD83D\uDC4B') : (greeting + ' \uD83D\uDC4B');
 
-    /* Outer wrapper */
     var banner = document.createElement('div');
     banner.id = 'kg-welcome-banner';
     banner.style.cssText = [
@@ -121,8 +107,9 @@
     ].join(';');
 
     var h = document.createElement('p');
+    h.id = 'kg-banner-headline';
     h.style.cssText = 'font-size:15px;font-weight:500;color:#ffffff;margin:0;line-height:1.3';
-    h.textContent = headline;
+    h.textContent = greeting + ' \uD83D\uDC4B'; /* shown immediately, name added async */
 
     var sub = document.createElement('p');
     sub.style.cssText = 'font-size:12px;color:var(--kg-nav-text,#9FE1CB);margin:0;opacity:0.9';
@@ -164,7 +151,6 @@
       close.style.background = 'rgba(255,255,255,0.12)';
       close.style.color = 'rgba(255,255,255,0.75)';
     });
-
     close.addEventListener('click', function () {
       dismissed = true;
       banner.style.transition = 'opacity .25s,transform .25s';
@@ -184,23 +170,33 @@
     if (dismissed) return;
     if (!isDashboard()) return;
 
-    getUserName(function (name) {
-      if (!isDashboard() || dismissed) return;
+    var banner  = buildBanner();
+    var targets = [
+      document.getElementById('dashboard-wrapper'),
+      document.querySelector('[id*="dashboard-wrapper"]'),
+      document.querySelector('.hl_dashboard'),
+      document.querySelector('[class*="hl-wrapper-container"]'),
+      document.querySelector('[class*="wrapper-container"]'),
+    ];
 
-      var banner  = buildBanner(name);
-      var targets = [
-        document.getElementById('dashboard-wrapper'),
-        document.querySelector('[id*="dashboard-wrapper"]'),
-        document.querySelector('.hl_dashboard'),
-        document.querySelector('[class*="hl-wrapper-container"]'),
-        document.querySelector('[class*="wrapper-container"]'),
-      ];
+    var injected = false;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i]) {
+        targets[i].insertBefore(banner, targets[i].firstChild);
+        injected = true;
+        break;
+      }
+    }
 
-      for (var i = 0; i < targets.length; i++) {
-        if (targets[i]) {
-          targets[i].insertBefore(banner, targets[i].firstChild);
-          return;
-        }
+    if (!injected) return;
+
+    /* Fetch name async — update headline when ready */
+    fetchName(function (name) {
+      if (!name) return;
+      var headline = document.getElementById('kg-banner-headline');
+      if (headline) {
+        var greeting = getGreeting();
+        headline.textContent = greeting + ', ' + name + ' \uD83D\uDC4B';
       }
     });
   }
