@@ -1,4 +1,3 @@
-
 (function () {
   'use strict';
 
@@ -439,27 +438,57 @@
     return /custom.?field/i.test(location.href);
   }
 
+  // Retry injecting bar every 500ms for up to 20 seconds
+  // Stops once the bar is in the DOM and a table exists
+  function retryInject () {
+    let attempts = 0;
+    const max    = 40;
+    const iv     = setInterval(() => {
+      attempts++;
+      const tableExists = document.querySelector('table tbody tr');
+      if (tableExists) {
+        injectStyles();
+        injectBar();
+        attachListeners();
+        clearInterval(iv);
+        return;
+      }
+      if (attempts >= max) {
+        clearInterval(iv);
+        healthCheck();
+      }
+    }, 500);
+  }
+
   function onNavigate () {
     if (!isTargetPage()) { barInjected = false; return; }
     locationId = locationId || resolveLocationId();
     injectStyles();
-    setTimeout(() => { injectBar(); healthCheck(); }, 600);
+    retryInject();
   }
 
   const _pushState = history.pushState.bind(history);
   history.pushState = function (...a) {
     _pushState(...a);
-    setTimeout(onNavigate, 300);
+    setTimeout(onNavigate, 200);
   };
-  window.addEventListener('popstate', () => setTimeout(onNavigate, 300));
+  window.addEventListener('popstate', () => setTimeout(onNavigate, 200));
 
-  // MutationObserver catches lazy-rendered tables after route change
+  // MutationObserver as safety net — re-attaches listeners when GHL re-renders rows
   const mo = new MutationObserver(() => {
     if (!isTargetPage()) return;
     if (!document.getElementById('ghl-bd-bar')) { barInjected = false; }
-    injectBar();
     attachListeners();
     updateBar();
+  });
+
+  // Start everything
+  injectStyles();
+  if (isTargetPage()) retryInject();
+
+  document.addEventListener('DOMContentLoaded', () => {
+    mo.observe(document.body, { childList: true, subtree: true });
+    if (isTargetPage()) retryInject();
   });
 
   window.addEventListener('load', () => {
