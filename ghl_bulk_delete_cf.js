@@ -435,7 +435,7 @@
   // Patch pushState + popstate + MutationObserver covers all navigation types.
   // ─────────────────────────────────────────────────────────────
   function isTargetPage () {
-    return /custom.?field/i.test(location.href);
+    return /custom.?field|\/settings\/fields/i.test(location.href);
   }
 
   // Retry injecting bar every 500ms for up to 20 seconds
